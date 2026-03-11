@@ -389,7 +389,7 @@ class Generator(ForgeActor):
         return completions
 
     @endpoint
-    async def stop(self):
+    async def stop_generator(self):
         """Stop the generator and cleanup local resources.
 
         This method is idempotent and can be called multiple times safely.
@@ -421,7 +421,7 @@ class Generator(ForgeActor):
         2. Stop generator_proc
         """
         try:
-            await actor.stop.call()
+            await actor.stop_generator.call()
         except Exception as e:
             logger.warning(f"Error during actor.stop: {e}")
 
