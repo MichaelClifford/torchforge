@@ -1,0 +1,144 @@
+# K8s launcher qwen3-1.7B - minimal GRPO config (3 GPUs)
+#
+# A stripped-down config to validate the K8s launcher end-to-end:
+#   - Uses a smaller model (Qwen3-1.7B)
+#   - 1 GPU for generator, 2 GPUs for trainer (3 total)
+#   - Small batch/token sizes for fast iteration
+#   - 5 training steps then exits
+#   - No ref model, no wandb, no checkpointing
+#
+# Usage:
+#   ./experimental/k8s/submit.sh qwen3-1b
+#
+# Prerequisites:
+#   - Minikube cluster with GPU support (see setup_k8s_env.sh)
+#   - torchforge-worker image loaded into the cluster
+
+# Global configuration
+group_size: 2
+local_batch_size: 1
+max_req_tokens: 512
+max_res_tokens: 256
+model: "Qwen/Qwen3-1.7B"
+off_by_n: 1
+compile: false  # Disable compile for faster startup
+
+# Main loop configuration
+rollout_threads: 1
+
+provisioner:
+  launcher: k8s
+  job_name: qwen3_1b
+  k8s_namespace: torchforge
+  k8s_image: "torchforge-worker:latest"
+  k8s_timeout: 300
+  k8s_args:
+    shm_size: "8Gi"  # Mount memory-backed /dev/shm (K8s default is 64Mi, too small for PyTorch)
+    generator:
+      resources:
+        nvidia.com/gpu: 1
+    trainer:
+      resources:
+        nvidia.com/gpu: 2
+
+# Observability - console only, no wandb
+metric_logging:
+  console:
+    logging_mode: global_reduce
+
+# Dataset configuration
+dataset:
+  path: "openai/gsm8k"
+  revision: "main"
+  data_split: "train"
+  streaming: true
+  model: ${model}
+
+# Generator configuration - 1 GPU
+generator:
+  engine_args:
+    model: ${model}
+    tensor_parallel_size: 1
+    pipeline_parallel_size: 1
+    enforce_eager: true
+    gpu_memory_utilization: 0.45
+  sampling_params:
+    n: ${group_size}
+    max_tokens: ${max_res_tokens}
+    temperature: 1.0
+    top_p: 1.0
+    logprobs: 1
+
+# Trainer configuration - 2 GPUs
+trainer:
+  model:
+    name: qwen3
+    flavor: 1.7B
+    hf_assets_path: hf://${model}
+  optimizer:
+    name: AdamW
+    lr: 1e-5
+    eps: 1e-8
+  lr_scheduler:
+    warmup_steps: 1
+  training:
+    local_batch_size: ${local_batch_size}
+    seq_len: ${sum:${max_req_tokens},${max_res_tokens}}
+    max_norm: 1.0
+    steps: 5  # Just enough to verify training works
+    dtype: bfloat16
+    gc_freq: 1
+  compile:
+    enable: false
+  parallelism:
+    data_parallel_replicate_degree: 1
+    data_parallel_shard_degree: 2
+    tensor_parallel_degree: 1
+    pipeline_parallel_degree: 1
+    context_parallel_degree: 1
+    expert_parallel_degree: 1
+    disable_loss_parallel: true
+  checkpoint:
+    enable: true
+    folder: /tmp/forge-checkpoint
+  activation_checkpoint:
+    mode: full
+
+# Replay buffer configuration
+replay_buffer:
+  batch_size: ${local_batch_size}
+  max_policy_age: ${off_by_n}
+  dp_size: 2
+
+# Resource allocations - 3 GPUs total (1 generator + 2 trainer)
+services:
+  generator:
+    procs: 1
+    num_replicas: 1
+    hosts: 1
+    mesh_name: generator
+    with_gpus: true
+  reward_actor:
+    procs: 1
+    num_replicas: 1
+    mesh_name: reward_actor
+    with_gpus: false
+
+actors:
+  dataset:
+    procs: 1
+    with_gpus: false
+    mesh_name: dataset
+  trainer:
+    procs: 2
+    hosts: 1
+    with_gpus: true
+    mesh_name: trainer
+  replay_buffer:
+    procs: 1
+    with_gpus: false
+    mesh_name: replay_buffer
+  compute_advantages:
+    procs: 1
+    with_gpus: false
+    mesh_name: compute_advantages

@@ -1,0 +1,57 @@
+# Exclude files not needed in the Docker build context.
+# This significantly reduces the build context size and image layers.
+
+# Version control
+.git/
+.gitignore
+
+# Documentation
+docs/
+*.md
+
+# Tests
+tests/
+
+# CI / IDE / editor config
+.github/
+.vscode/
+.idea/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.env
+.venv/
+env/
+venv/
+
+# Model checkpoints (should be mounted via PVC, not baked in)
+*.pt
+*.pth
+*.ckpt
+*.distcp
+checkpoint/
+
+# Logs
+*.log
+wandb/
+slogs/
+slurm-*
+
+# Containers
+docker/
+.dockerignore
+Dockerfile
+
+# Large binary assets
+assets/wheels/
+*.sqsh
+*.whl

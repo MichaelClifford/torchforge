@@ -38,6 +38,7 @@ class Observation:
 class Launcher(Enum):
     MAST = "mast"
     SLURM = "slurm"
+    K8S = "k8s"
 
 
 @dataclass
@@ -109,12 +110,22 @@ class LauncherConfig:
     job_name: str = ""
     services: dict[str, ServiceConfig] = field(default_factory=dict)
     actors: dict[str, ProcessConfig] = field(default_factory=dict)
+
+    # SLURM-specific params
     slurm_args: dict[str, str] = field(default_factory=dict)
     cpus_per_task: int | None = None  # CPUs per node (SLURM param, can get with sinfo)
     mem: int | None = (  # noqa: N815
         None  # Memory per node (SLURM param, can get with sinfo)
     )
     gpus_per_node: int = 8  # GPUs per node (SLURM param, can get with sinfo)
+
+    # Kubernetes-specific params
+    k8s_namespace: str = "default"  # Kubernetes namespace for worker pods
+    k8s_image: str | None = None  # Default container image for worker pods
+    k8s_timeout: int | None = None  # Timeout (seconds) for pod readiness
+    k8s_args: dict[str, Any] = field(
+        default_factory=dict
+    )  # Per-mesh overrides, labels, pod_spec, etc.
 
     def __post_init__(self):
         if isinstance(self.launcher, str):
